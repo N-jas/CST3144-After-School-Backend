@@ -3,6 +3,9 @@ const cors = require("cors");
 const lessons = require("./lessons");
 const app = express();
 const port = process.env.PORT || 3000;
+const connectDatabase = require("./database");
+
+let db;
 
 // Log every incoming request.
 app.use(function(request, response, next) {
@@ -32,6 +35,15 @@ app.use(function(request, response) {
     });
 });
 
-app.listen(port, function() {
-    console.log("Server listening on port " + port);
-});
+connectDatabase()
+    .then(function(database) {
+        db = database;
+
+        app.listen(port, function() {
+            console.log("Server listening on port " + port);
+        });
+    })
+    .catch(function(error) {
+        console.error("Database connection failed:", error.message);
+        process.exitCode = 1;
+    });
