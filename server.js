@@ -149,6 +149,88 @@ app.post("/orders", async function(request, response) {
     }
 });
 
+app.put("/lessons/:id", async function(request, response) {
+    const lessonId = Number(request.params.id);
+    const body = request.body;
+
+    if (!Number.isInteger(lessonId) || lessonId <= 0) {
+        return response.status(400).json({
+            error: "Invalid lesson ID."
+        });
+    }
+
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return response.status(400).json({
+            error: "Provide a JSON object containing lesson updates."
+        });
+    }
+
+    const allowedFields = ["topic", "location", "price", "space", "icon"];
+    const fields = Object.keys(body);
+
+    if (
+        fields.length === 0 ||
+        !fields.every(function(field) {
+            return allowedFields.includes(field);
+        })
+    ) {
+        return response.status(400).json({
+            error: "Use topic, location, price, space or icon."
+        });
+    }
+
+    for (const field of fields) {
+        const value = body[field];
+
+        if (field === "price") {
+            if (
+                typeof value !== "number" ||
+                !Number.isFinite(value) ||
+                value < 0
+            ) {
+                return response.status(400).json({
+                    error: "Price must be a non-negative number."
+                });
+            }
+        } else if (field === "space") {
+            if (!Number.isInteger(value) || value < 0) {
+                return response.status(400).json({
+                    error: "Space must be a non-negative whole number."
+                });
+            }
+        } else if (typeof value !== "string" || value.trim() === "") {
+            return response.status(400).json({
+                error: field + " must be a non-empty string."
+            });
+        }
+    }
+
+    try {
+        const result = await db.collection("Lessons").updateOne(
+            { id: lessonId },
+            { $set: body }
+        );
+
+        if (result.matchedCount === 0) {
+            return response.status(404).json({
+                error: "Lesson not found."
+            });
+        }
+
+        response.json({
+            message: "Lesson updated successfully.",
+            matchedCount: result.matchedCount,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error("Failed to update lesson:", error.message);
+
+        response.status(500).json({
+            error: "Unable to update lesson."
+        });
+    }
+});
+
 // Handle unknown routes. Keep this after all valid routes.
 app.use(function(request, response) {
     response.status(404).json({
