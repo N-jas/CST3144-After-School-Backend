@@ -56,6 +56,99 @@ app.get("/lessons", async function(request, response) {
     }
 });
 
+app.post("/orders", async function(request, response) {
+    const { name, phone, items } = request.body || {};
+
+    if (
+        typeof name !== "string" ||
+        !/^[A-Za-z]+(?: [A-Za-z]+)*$/.test(name.trim())
+    ) {
+        return response.status(400).json({
+            error: "Enter a valid name using letters and spaces."
+        });
+    }
+
+    if (
+        typeof phone !== "string" ||
+        !/^[0-9]+$/.test(phone)
+    ) {
+        return response.status(400).json({
+            error: "Phone must contain digits only."
+        });
+    }
+
+    if (
+        !Array.isArray(items) ||
+        items.length === 0 ||
+        !items.every(function(item) {
+            return item &&
+                Number.isInteger(item.lessonId) &&
+                item.lessonId > 0 &&
+                Number.isInteger(item.spaces) &&
+                item.spaces > 0;
+        })
+    ) {
+        return response.status(400).json({
+            error: "Include lesson IDs and positive whole-number spaces."
+        });
+    }
+
+    try {
+        const lessonIds = items.map(function(item) {
+            return item.lessonId;
+        });
+
+        const uniqueIds = [...new Set(lessonIds)];
+
+        if (uniqueIds.length !== items.length) {
+            return response.status(400).json({
+                error: "Combine spaces for each lesson into one item."
+            });
+        }
+
+        const lessons = await db.collection("Lessons")
+            .find({ id: { $in: uniqueIds } })
+            .toArray();
+
+        const allLessonsExist = uniqueIds.every(function(id) {
+            return lessons.some(function(lesson) {
+                return lesson.id === id;
+            });
+        });
+
+        if (!allLessonsExist) {
+            return response.status(400).json({
+                error: "One or more lessons do not exist."
+            });
+        }
+
+        const order = {
+            name: name.trim(),
+            phone: phone,
+            items: items.map(function(item) {
+                return {
+                    lessonId: item.lessonId,
+                    spaces: item.spaces
+                };
+            }),
+            createdAt: new Date()
+        };
+
+        const result = await db.collection("Orders").insertOne(order);
+
+        response.status(201).json({
+            message: "Order submitted successfully.",
+            orderId: result.insertedId
+        });
+    } catch (error) {
+        console.error("Failed to save order:", error.message);
+
+        response.status(500).json({
+            error: "Unable to save order."
+        });
+    }
+});
+
 // Handle unknown routes. Keep this after all valid routes.
 app.use(function(request, response) {
     response.status(404).json({
