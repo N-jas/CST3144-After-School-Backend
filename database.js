@@ -1,23 +1,46 @@
-require("dotenv").config();
+const path = require("path");
+
+require("dotenv").config({
+    path: path.join(__dirname, "config.env")
+});
 
 const { MongoClient } = require("mongodb");
 
-async function connectDatabase() {
-    if (!process.env.MONGODB_URI) {
-        throw new Error("MONGODB_URI is missing from .env");
+async function connectToMongoDB() {
+    const {
+        MONGODB_PREFIX,
+        MONGODB_USERNAME,
+        MONGODB_PASSWORD,
+        MONGODB_URL
+    } = process.env;
+
+    if (
+        !MONGODB_PREFIX ||
+        !MONGODB_USERNAME ||
+        !MONGODB_PASSWORD ||
+        !MONGODB_URL
+    ) {
+        throw new Error("Missing MongoDB settings in config.env");
     }
 
-    const client = new MongoClient(process.env.MONGODB_URI);
+    const uri =
+        MONGODB_PREFIX +
+        encodeURIComponent(MONGODB_USERNAME) + ":" +
+        encodeURIComponent(MONGODB_PASSWORD) +
+        MONGODB_URL;
 
-    await client.connect();
+    const client = new MongoClient(uri);
 
-    const db = client.db("after_school");
+    try {
+        await client.connect();
 
-    await db.command({ ping: 1 });
+        console.log("You successfully connected to MongoDB!");
 
-    console.log("Connected to MongoDB Atlas");
-
-    return db;
+        return client;
+    } catch (error) {
+        await client.close();
+        throw error;
+    }
 }
 
-module.exports = connectDatabase;
+module.exports = connectToMongoDB;

@@ -1,9 +1,9 @@
 const express = require("express");
 const cors = require("cors");
-const lessons = require("./lessons");
+const connectToMongoDB = require("./database");
+
 const app = express();
-const port = process.env.PORT || 3000;
-const connectDatabase = require("./database");
+const port = process.env.PORT || 3001;
 
 let db;
 
@@ -13,34 +13,72 @@ app.use(function(request, response, next) {
     next();
 });
 
-// Allow Express to read JSON request bodies.
+// Allow frontend requests and read JSON request bodies.
 app.use(cors());
 app.use(express.json());
 
-// A simple route to check that the server works.
+// Check that the API is running.
 app.get("/", function(request, response) {
     response.json({
         message: "After School API is running"
     });
 });
 
-app.get("/lessons", function(request, response) {
-    response.json(lessons);
+// Retrieve lessons from MongoDB Atlas.
+app.get("/lessons", async function(request, response) {
+    try {
+        const collection = db.collection("Lessons");
+        const documents = await collection.find({}).toArray();
+
+        console.log("Database:", db.databaseName);
+        console.log("Lessons found:", documents.length);
+
+        // Match the field names used by the frontend.
+        const lessons = documents.map(function(document) {
+            return {
+                _id: document._id,
+                id: document.id,
+                subject: document.topic,
+                location: document.location,
+                price: document.price,
+                spaces: document.space,
+                icon: document.icon
+            };
+        });
+
+        response.json(lessons);
+    } catch (error) {
+        console.error("Failed to retrieve lessons:", error.message);
+
+        response.status(500).json({
+            error: "Unable to retrieve lessons"
+        });
+    }
 });
 
-// Handle requests that do not match a route.
+// Handle unknown routes. Keep this after all valid routes.
 app.use(function(request, response) {
     response.status(404).json({
         error: "Route not found"
     });
 });
 
-connectDatabase()
-    .then(function(database) {
-        db = database;
+// Connect to Atlas before starting the server.
+connectToMongoDB()
+    .then(function(client) {
+        db = client.db("After-school");
 
-        app.listen(port, function() {
+        const server = app.listen(port, function() {
+            console.log("Connected database:", db.databaseName);
             console.log("Server listening on port " + port);
+        });
+
+        server.on("error", function(error) {
+            console.error("Server failed to start:", error.message);
+
+            client.close().finally(function() {
+                process.exitCode = 1;
+            });
         });
     })
     .catch(function(error) {
