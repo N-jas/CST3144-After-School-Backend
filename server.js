@@ -1,10 +1,10 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const connectToMongoDB = require("./database");
 
 const app = express();
 const port = process.env.PORT || 3001;
-const path = require("path");
 
 let db;
 
@@ -18,13 +18,13 @@ app.use(function(request, response, next) {
 app.use(cors());
 app.use(express.json());
 
-// Serve files from the backend images folder.
+// Serve lesson images.
 app.use(
     "/images",
     express.static(path.join(__dirname, "images"))
 );
 
-// Return a clear message when an image does not exist.
+// Handle missing images.
 app.use("/images", function(request, response) {
     response.status(404).json({
         error: "Image not found."
@@ -38,17 +38,41 @@ app.get("/", function(request, response) {
     });
 });
 
-// Retrieve lessons from MongoDB Atlas.
+// Retrieve lessons, optionally searching with ?q=...
 app.get("/lessons", async function(request, response) {
-    try {
-        const collection = db.collection("Lessons");
-        const documents = await collection.find({}).toArray();
+    const search = request.query.q;
 
-        console.log("Database:", db.databaseName);
-        console.log("Lessons found:", documents.length);
+    if (search !== undefined && typeof search !== "string") {
+        return response.status(400).json({
+            error: "Search must be a text value."
+        });
+    }
+
+    const searchText = (search || "").trim().toLowerCase();
+
+    try {
+        const documents = await db.collection("Lessons")
+            .find({})
+            .toArray();
+
+        // Search subject, location, price and availability.
+        const matchingLessons = documents.filter(function(document) {
+            const values = [
+                document.topic,
+                document.location,
+                document.price,
+                document.space
+            ];
+
+            return values.some(function(value) {
+                return String(value ?? "")
+                    .toLowerCase()
+                    .includes(searchText);
+            });
+        });
 
         // Match the field names used by the frontend.
-        const lessons = documents.map(function(document) {
+        const lessons = matchingLessons.map(function(document) {
             return {
                 _id: document._id,
                 id: document.id,
@@ -61,16 +85,20 @@ app.get("/lessons", async function(request, response) {
             };
         });
 
+        console.log("Database:", db.databaseName);
+        console.log("Lessons returned:", lessons.length);
+
         response.json(lessons);
     } catch (error) {
         console.error("Failed to retrieve lessons:", error.message);
 
         response.status(500).json({
-            error: "Unable to retrieve lessons"
+            error: "Unable to retrieve lessons."
         });
     }
 });
 
+// Validate and save an order.
 app.post("/orders", async function(request, response) {
     const { name, phone, items } = request.body || {};
 
@@ -164,6 +192,7 @@ app.post("/orders", async function(request, response) {
     }
 });
 
+// Update lesson details using its numeric ID.
 app.put("/lessons/:id", async function(request, response) {
     const lessonId = Number(request.params.id);
     const body = request.body;
@@ -180,7 +209,14 @@ app.put("/lessons/:id", async function(request, response) {
         });
     }
 
-    const allowedFields = ["topic", "location", "price", "space", "icon"];
+    const allowedFields = [
+        "topic",
+        "location",
+        "price",
+        "space",
+        "icon"
+    ];
+
     const fields = Object.keys(body);
 
     if (
@@ -213,7 +249,10 @@ app.put("/lessons/:id", async function(request, response) {
                     error: "Space must be a non-negative whole number."
                 });
             }
-        } else if (typeof value !== "string" || value.trim() === "") {
+        } else if (
+            typeof value !== "string" ||
+            value.trim() === ""
+        ) {
             return response.status(400).json({
                 error: field + " must be a non-empty string."
             });
@@ -246,14 +285,14 @@ app.put("/lessons/:id", async function(request, response) {
     }
 });
 
-// Handle unknown routes. Keep this after all valid routes.
+// Handle unknown routes.
 app.use(function(request, response) {
     response.status(404).json({
-        error: "Route not found"
+        error: "Route not found."
     });
 });
 
-// Connect to Atlas before starting the server.
+// Connect to Atlas before starting Express.
 connectToMongoDB()
     .then(function(client) {
         db = client.db("After-school");
