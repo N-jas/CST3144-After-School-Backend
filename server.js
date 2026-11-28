@@ -4,6 +4,7 @@ const connectToMongoDB = require("./database");
 
 const app = express();
 const port = process.env.PORT || 3001;
+const path = require("path");
 
 let db;
 
@@ -16,6 +17,19 @@ app.use(function(request, response, next) {
 // Allow frontend requests and read JSON request bodies.
 app.use(cors());
 app.use(express.json());
+
+// Serve files from the backend images folder.
+app.use(
+    "/images",
+    express.static(path.join(__dirname, "images"))
+);
+
+// Return a clear message when an image does not exist.
+app.use("/images", function(request, response) {
+    response.status(404).json({
+        error: "Image not found."
+    });
+});
 
 // Check that the API is running.
 app.get("/", function(request, response) {
