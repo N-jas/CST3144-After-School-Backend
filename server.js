@@ -56,7 +56,8 @@ app.get("/lessons", async function(request, response) {
                 location: document.location,
                 price: document.price,
                 spaces: document.space,
-                icon: document.icon
+                icon: document.icon,
+                image: document.image
             };
         });
 
